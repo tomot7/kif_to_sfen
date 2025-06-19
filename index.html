@@ -29,7 +29,7 @@
 
         <main class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 md:p-8">
             <div class="mb-6">
-                <label for="kif-file" class="block mb-2 text-lg font-medium text-gray-700 dark:text-gray-300">1. KIF/KIFU ファイルを選択</label>
+                <label class="block mb-2 text-lg font-medium text-gray-700 dark:text-gray-300">1. KIF/KIFU ファイルを選択</label>
                 <div class="flex items-center justify-center w-full">
                     <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-50 dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:hover:border-gray-500 dark:hover:bg-gray-600 transition">
                         <div class="flex flex-col items-center justify-center pt-5 pb-6">
@@ -75,7 +75,8 @@
         // --- 定数定義 ---
         const PIECES = {
             '歩': 'P', '香': 'L', '桂': 'N', '銀': 'S', '金': 'G', '角': 'B', '飛': 'R', '玉': 'K', '王': 'K',
-            'と': '+P', '杏': '+L', '圭': '+N', '全': '+S', '馬': '+B', '龍': '+R', '竜': '+R'
+            'と': '+P', '成香': '+L', '杏': '+L', '成桂': '+N', '圭': '+N', '成銀': '+S', '全': '+S', 
+            '馬': '+B', '龍': '+R', '竜': '+R'
         };
         const KANJI_NUM = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
         const ZENKAKU_NUM = { '１': 1, '２': 2, '３': 3, '４': 4, '５': 5, '６': 6, '７': 7, '８': 8, '９': 9 };
@@ -108,16 +109,8 @@
         
         // --- ドラッグ＆ドロップ ---
         const dropzone = fileInput.parentElement;
-        dropzone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropzone.classList.add('dark:border-indigo-500', 'border-indigo-500');
-        });
-        dropzone.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dropzone.classList.remove('dark:border-indigo-500', 'border-indigo-500');
-        });
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropzone.classList.add('dark:border-indigo-500', 'border-indigo-500'); });
+        dropzone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropzone.classList.remove('dark:border-indigo-500', 'border-indigo-500'); });
         dropzone.addEventListener('drop', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -129,18 +122,13 @@
             }
         });
 
-
         // --- 変換ボタンイベント ---
         convertButton.addEventListener('click', () => {
             if (!selectedFile) return;
-
             hideError();
             resultContainer.classList.add('hidden');
-
-            // ファイルの拡張子に応じてエンコーディングを決定
             const encoding = selectedFile.name.toLowerCase().endsWith('.kifu') ? 'UTF-8' : 'Shift_JIS';
             const reader = new FileReader();
-
             reader.onload = (e) => {
                 try {
                     const kifData = e.target.result;
@@ -152,62 +140,59 @@
                     console.error(err);
                 }
             };
-            
-            reader.onerror = () => {
-                showError(`ファイルの読み込みに失敗しました。エンコーディングが'${encoding}'でない可能性があります。`);
-            };
-
+            reader.onerror = () => { showError(`ファイルの読み込みに失敗しました。エンコーディングが'${encoding}'でない可能性があります。`); };
             reader.readAsText(selectedFile, encoding);
         });
         
         // --- コピーボタンイベント ---
         copyButton.addEventListener('click', () => {
             sfenOutput.select();
-            // navigator.clipboard.writeTextはiframe内で動作しないことがあるため、旧方式を使用
             document.execCommand('copy');
-            sfenOutput.blur(); // 選択解除
+            sfenOutput.blur();
             copyFeedback.classList.remove('opacity-0');
-            setTimeout(() => {
-                copyFeedback.classList.add('opacity-0');
-            }, 2000);
+            setTimeout(() => { copyFeedback.classList.add('opacity-0'); }, 2000);
         });
 
         // --- 将棋のロジック ---
         class ShogiGame {
             constructor() {
-                this.board = Array(9).fill(null).map(() => Array(9).fill(null));
-                this.hands = { sente: {}, gote: {} }; // 先手, 後手
-                this.turn = 'b'; // 'b' for black (sente), 'w' for white (gote)
-                this.moveNumber = 1;
-                this.lastMove = null;
-                this.initBoard();
+                this.initGame();
             }
 
-            initBoard() {
-                // 初期配置（平手）
-                const initialSetup = {
-                    '1': { 'L': 0, 'P': 2, 'l': 8 },
-                    '2': { 'N': 0, 'B': 1, 'P': 2, 'n': 8 },
-                    '3': { 'S': 0, 'P': 2, 's': 8 },
-                    '4': { 'G': 0, 'P': 2, 'g': 8 },
-                    '5': { 'K': 0, 'P': 2, 'k': 8 },
-                    '6': { 'G': 0, 'P': 2, 'g': 8 },
-                    '7': { 'S': 0, 'P': 2, 's': 8 },
-                    '8': { 'N': 0, 'R': 1, 'P': 2, 'n': 8 },
-                    '9': { 'L': 0, 'P': 2, 'l': 8 },
-                };
+            initGame() {
+                this.board = Array(9).fill(null).map(() => Array(9).fill(null));
+                this.hands = { b: {}, w: {} }; // b: sente, w: gote
+                this.turn = 'b';
+                this.moveNumber = 1;
+                this.lastMove = null;
+                this.initBoardFromSfen();
+            }
+            
+            // SFENの初期局面文字列から盤面を生成
+            initBoardFromSfen(sfenBoard = 'lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL') {
+                const rows = sfenBoard.split('/');
+                for (let y = 0; y < 9; y++) {
+                    let x = 0;
+                    for (const char of rows[y]) {
+                        if (char === '+') continue; // skip promoter
+                        const nextChar = rows[y][rows[y].indexOf(char) + 1] || '';
+                        const isPromoted = char === '+';
 
-                for (let x = 1; x <= 9; x++) {
-                    for (const piece in initialSetup[x.toString()]) {
-                        const y = initialSetup[x.toString()][piece];
-                        this.board[y][9 - x] = piece;
+                        if (isNaN(parseInt(char))) {
+                            let piece = char;
+                             if(rows[y][rows[y].indexOf(char)-1] === '+') {
+                                piece = '+' + piece;
+                            }
+                            this.board[y][x] = piece;
+                            x++;
+                        } else {
+                            x += parseInt(char);
+                        }
                     }
                 }
             }
             
-            // SFEN 文字列を生成する
             toSfen() {
-                // 1. 盤面
                 let boardStr = '';
                 for (let y = 0; y < 9; y++) {
                     let emptyCount = 0;
@@ -218,221 +203,164 @@
                                 boardStr += emptyCount;
                                 emptyCount = 0;
                             }
-                            const owner = piece.toLowerCase() === piece ? 'w' : 'b';
-                            let sfenPiece = (PIECES[piece.replace('+', '')] || piece).toUpperCase();
-                            if (piece.startsWith('+')) {
-                                sfenPiece = '+' + sfenPiece;
-                            }
-                            boardStr += (owner === 'b' ? sfenPiece : sfenPiece.toLowerCase());
+                            boardStr += piece;
                         } else {
                             emptyCount++;
                         }
                     }
-                    if (emptyCount > 0) {
-                        boardStr += emptyCount;
-                    }
-                    if (y < 8) {
-                        boardStr += '/';
-                    }
+                    if (emptyCount > 0) { boardStr += emptyCount; }
+                    if (y < 8) { boardStr += '/'; }
                 }
 
-                // 2. 手番
-                const turnStr = this.turn;
-
-                // 3. 持ち駒
                 let handStr = '';
-                for (const owner of ['sente', 'gote']) {
-                    const hand = this.hands[owner];
+                for (const owner of ['b', 'w']) {
                     for (const piece of SFEN_HAND_ORDER) {
-                         if (hand[piece] > 0) {
-                            if (hand[piece] > 1) {
-                                handStr += hand[piece];
-                            }
-                            handStr += (owner === 'sente' ? piece : piece.toLowerCase());
+                        const hand = this.hands[owner];
+                        if (hand[piece] > 0) {
+                            if (hand[piece] > 1) { handStr += hand[piece]; }
+                            handStr += (owner === 'b' ? piece : piece.toLowerCase());
                         }
                     }
                 }
-                if (handStr === '') {
-                    handStr = '-';
-                }
+                if (handStr === '') { handStr = '-'; }
 
-                // 4. 手数
-                const moveNumStr = this.moveNumber;
-
-                return `${boardStr} ${turnStr} ${handStr} ${moveNumStr}`;
+                return `${boardStr} ${this.turn} ${handStr} ${this.moveNumber}`;
             }
 
-            // KIF形式の指し手を適用
             applyKifMove(move) {
                 const { piece, to, from, promote, isDrop } = this.parseKifMove(move);
-                
-                const toX = to.x;
-                const toY = to.y;
-
-                let pieceToMove = PIECES[piece] || piece;
+                const toRow = to.y - 1;
+                const toCol = 9 - to.x;
+                const sfenPiece = PIECES[piece];
+                if (!sfenPiece) { throw new Error(`指し手 ${this.moveNumber}: 未知の駒です: ${piece}`); }
 
                 if (isDrop) {
-                    if (this.board[toY-1][9-toX]) {
-                        throw new Error(`指し手 ${this.moveNumber}: ${toX}${toY} には既に駒があります (駒打ち)`);
-                    }
-                    this.board[toY-1][9-toX] = pieceToMove;
-                    // 持ち駒から減らす
-                    const hand = this.turn === 'b' ? this.hands.sente : this.hands.gote;
-                    if (!hand[pieceToMove] || hand[pieceToMove] <= 0) {
-                        throw new Error(`指し手 ${this.moveNumber}: ${pieceToMove} の持ち駒がありません。`);
-                    }
-                    hand[pieceToMove]--;
+                    if (this.board[toRow][toCol]) { throw new Error(`指し手 ${this.moveNumber}: ${to.x}${to.y} には既に駒があります (駒打ち)`); }
+                    const hand = this.turn === 'b' ? this.hands.b : this.hands.w;
+                    if (!hand[sfenPiece] || hand[sfenPiece] <= 0) { throw new Error(`指し手 ${this.moveNumber}: ${piece} の持ち駒がありません。`); }
+                    hand[sfenPiece]--;
+                    this.board[toRow][toCol] = this.turn === 'b' ? sfenPiece.toUpperCase() : sfenPiece.toLowerCase();
                 } else {
-                    const fromX = from.x;
-                    const fromY = from.y;
+                    const fromRow = from.y - 1;
+                    const fromCol = 9 - from.x;
+                    const movingPiece = this.board[fromRow][fromCol];
+                    if (!movingPiece) { throw new Error(`指し手 ${this.moveNumber}: ${from.x}${from.y} に動かす駒がありません。`); }
+
+                    const capturedPiece = this.board[toRow][toCol];
+                    if (capturedPiece) { this.addPieceToHand(capturedPiece); }
                     
-                    const movingPiece = this.board[fromY-1][9-fromX];
-                    if (!movingPiece) {
-                        throw new Error(`指し手 ${this.moveNumber}: ${fromX}${fromY} に動かす駒がありません。`);
+                    this.board[fromRow][fromCol] = null;
+                    let newPiece = movingPiece;
+                    if (promote && !movingPiece.startsWith('+')) {
+                        newPiece = '+' + movingPiece.toUpperCase();
+                        if (this.turn === 'w') newPiece = newPiece.toLowerCase();
                     }
-                    
-                    const capturedPiece = this.board[toY-1][9-toX];
-                    if (capturedPiece) {
-                        this.addPieceToHand(capturedPiece);
-                    }
-                    
-                    this.board[fromY-1][9-fromX] = null;
-                    this.board[toY-1][9-toX] = promote ? `+${movingPiece.replace('+', '')}` : movingPiece;
+                    this.board[toRow][toCol] = newPiece;
                 }
                 
-                this.lastMove = { to: { x: toX, y: toY } };
+                this.lastMove = { to: { x: to.x, y: to.y } };
                 this.turn = (this.turn === 'b') ? 'w' : 'b';
                 this.moveNumber++;
             }
             
-            // 持ち駒に駒を追加
-            addPieceToHand(piece) {
-                let unpromotedPiece = (PIECES[piece.replace('+', '')] || piece).toUpperCase();
-                 // +S -> S, +P -> P
-                if (unpromotedPiece.startsWith('+')) {
-                    unpromotedPiece = unpromotedPiece.substring(1);
-                }
-                
-                const hand = this.turn === 'b' ? this.hands.sente : this.hands.gote;
-                if (!hand[unpromotedPiece]) {
-                    hand[unpromotedPiece] = 0;
-                }
-                hand[unpromotedPiece]++;
+            addPieceToHand(capturedPiece) {
+                const unpromotedPiece = capturedPiece.replace('+', '').toUpperCase();
+                const hand = this.turn === 'b' ? this.hands.b : this.hands.w;
+                hand[unpromotedPiece] = (hand[unpromotedPiece] || 0) + 1;
             }
 
-            // KIFの指し手文字列を解析する
             parseKifMove(kifMoveStr) {
-                // 例: "７六歩(77)" or "同　歩" or "５三角打"
-                const moveRegex = /(?:同\s*|[１-９][一二三四五六七八九])(.+?)(?:\(.*\)|成|打|$)/;
-                let parts = kifMoveStr.trim().split(/\s+/);
-                
-                let to, from;
-                let piece, promote = false, isDrop = false;
+                const fullMoveStr = kifMoveStr.trim().split(/\s+/)[0];
+                let to, from = null, piece, promote = false, isDrop = false;
+                let remainingStr = fullMoveStr;
 
-                const coordStr = parts[0];
-                let pieceStr = parts[1];
-
-                if (pieceStr.endsWith('成')) {
-                    promote = true;
-                    pieceStr = pieceStr.slice(0, -1);
+                const fromMatch = remainingStr.match(/\((\d{2})\)/);
+                if (fromMatch) {
+                    from = { x: parseInt(fromMatch[1][0]), y: parseInt(fromMatch[1][1]) };
+                    remainingStr = remainingStr.replace(fromMatch[0], '');
                 }
-                if (pieceStr.endsWith('打')) {
-                    isDrop = true;
-                    pieceStr = pieceStr.slice(0, -1);
-                }
-                piece = pieceStr;
 
-                if (coordStr.startsWith('同')) {
+                if (remainingStr.endsWith('成')) { promote = true; remainingStr = remainingStr.slice(0, -1); }
+                else if (remainingStr.endsWith('打')) { isDrop = true; remainingStr = remainingStr.slice(0, -1); }
+
+                if (remainingStr.startsWith('同')) {
                     if (!this.lastMove) throw new Error("初手で '同' は使えません。");
                     to = { ...this.lastMove.to };
+                    piece = remainingStr.slice(1).trim();
                 } else {
+                    const coordStr = remainingStr.slice(0, 2);
+                    piece = remainingStr.slice(2).trim();
+                    if(!ZENKAKU_NUM[coordStr[0]] || !KANJI_NUM[coordStr[1]]) { throw new Error(`指し手 ${this.moveNumber}: 不正な座標です: ${coordStr}`); }
                     to = { x: ZENKAKU_NUM[coordStr[0]], y: KANJI_NUM[coordStr[1]] };
                 }
+
+                if (piece === '竜') piece = '龍';
+                if (['と', '杏', '圭', '全', '馬', '龍'].includes(piece)) {
+                    promote = true;
+                    const sfenPromoted = PIECES[piece];
+                    const sfenUnpromoted = sfenPromoted.replace('+', '');
+                    const kanjiUnpromoted = Object.keys(PIECES).find(k => PIECES[k] === sfenUnpromoted && k.length === 1);
+                    piece = kanjiUnpromoted || piece;
+                }
                 
-                if (isDrop) {
-                    from = null;
-                } else {
-                    const fromMatch = kifMoveStr.match(/\((\d{2})\)/);
-                    if (fromMatch) {
-                        from = { x: parseInt(fromMatch[1][0]), y: parseInt(fromMatch[1][1]) };
-                    } else {
-                        // 移動元が省略されている場合、その駒を動かせる場所を探す
-                        from = this.findSource(piece, to, promote);
-                         if (!from) {
-                            throw new Error(`指し手 ${this.moveNumber}: ${piece} を ${to.x}${to.y} へ動かす駒が見つかりません。`);
-                        }
+                if (!from && !isDrop) {
+                    from = this.findSource(piece, to);
+                    if (!from) {
+                        const KANJI_NUM_REV = Object.fromEntries(Object.entries(KANJI_NUM).map(([k, v]) => [v, k]));
+                        throw new Error(`指し手 ${this.moveNumber}: ${piece} を ${to.x}${KANJI_NUM_REV[to.y]} へ動かす駒が見つかりません。`);
                     }
                 }
-
                 return { piece, to, from, promote, isDrop };
             }
             
-            // 移動元の探索
-            findSource(pieceKanji, to, promote) {
-                const pieceType = PIECES[pieceKanji];
-                const turnOwner = this.turn === 'b' ? 'sente' : 'gote';
-                
-                for(let y = 0; y < 9; y++) {
-                    for(let x = 0; x < 9; x++) {
+            findSource(pieceKanji, to) {
+                const sfenPieceType = PIECES[pieceKanji];
+                for (let y = 0; y < 9; y++) {
+                    for (let x = 0; x < 9; x++) {
                         const boardPiece = this.board[y][x];
-                        if(!boardPiece) continue;
-                        
-                        const pieceOwner = boardPiece.toLowerCase() === boardPiece ? 'gote' : 'sente';
-                        let boardPieceType = (PIECES[boardPiece.replace('+', '')] || boardPiece).toUpperCase();
-
-                        if (pieceOwner === turnOwner && boardPieceType === pieceType) {
-                            const from = {x: 9 - x, y: y + 1};
-                            // ここで本来は移動が合法かどうかをチェックすべきだが、簡易的に最初の候補を返す
-                            // TODO: 厳密な合法手判定を追加する
-                            // if (is_legal_move(from, to, boardPiece)) return from;
-                            return from; // 簡易実装
+                        if (!boardPiece) continue;
+                        const pieceOwner = (boardPiece.toLowerCase() === boardPiece) ? 'w' : 'b';
+                        if (this.turn === pieceOwner && boardPiece.toUpperCase().replace('+', '') === sfenPieceType) {
+                            // TODO: 厳密な合法手判定。現在は最初に見つかったものを返す。
+                            return { x: 9 - x, y: y + 1 };
                         }
                     }
                 }
-                return null; //見つからない
+                return null;
             }
-
         }
 
         // --- KIF処理のメイン関数 ---
         function processKif(kifData) {
             const game = new ShogiGame();
             const sfenList = [];
-
-            // 初期局面のSFENを追加
-            sfenList.push(game.toSfen());
+            // TODO: 手合割に応じて初期局面を変更する処理
+            
+            sfenList.push(game.toSfen()); // 初期局面を追加
 
             const lines = kifData.split(/\r\n|\n|\r/);
             const moveRegex = /^\s*\d+\s+/;
             
             for (const line of lines) {
                 if (line.startsWith('*') || line.startsWith('手数----') || line.trim() === '' || line.includes('：')) {
-                    continue; // コメントやヘッダーをスキップ
+                    continue;
                 }
                 
                 if (moveRegex.test(line)) {
                     const moveStr = line.replace(moveRegex, '').trim();
-                     if (moveStr.includes('投了') || moveStr.includes('中断') || moveStr.includes('詰み')) {
+                     if (moveStr.includes('投了') || moveStr.includes('中断') || moveStr.includes('詰み') || moveStr.includes('千日手')) {
                         break;
                     }
                     game.applyKifMove(moveStr);
                     sfenList.push(game.toSfen());
                 }
             }
-
             return sfenList;
         }
         
         // --- UI補助関数 ---
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorDisplay.classList.remove('hidden');
-        }
-
-        function hideError() {
-            errorDisplay.classList.add('hidden');
-        }
-
+        function showError(message) { errorMessage.textContent = message; errorDisplay.classList.remove('hidden'); }
+        function hideError() { errorDisplay.classList.add('hidden'); }
     </script>
 </body>
 </html>
