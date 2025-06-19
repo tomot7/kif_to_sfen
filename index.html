@@ -71,6 +71,25 @@
                  <label for="directory-picker" class="block mb-2 text-lg font-medium text-gray-700 dark:text-gray-300">1. フォルダを選択 (KIFファイルを含む)</label>
                 <input type="file" id="directory-picker" webkitdirectory multiple class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">選択したフォルダ内のすべての.kif/.kifuファイルを処理し、各局面の出現回数を集計したCSVファイルを生成します。</p>
+                
+                <div class="mt-6 space-y-4">
+                    <h3 class="text-lg font-medium text-gray-700 dark:text-gray-300">オプション</h3>
+                    <div class="relative flex items-start">
+                        <div class="flex h-6 items-center">
+                            <input id="exclude-single" name="exclude-single" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                        </div>
+                        <div class="ml-3 text-sm leading-6">
+                            <label for="exclude-single" class="font-medium text-gray-900 dark:text-gray-100">出現回数1回の局面を除外する</label>
+                            <p class="text-gray-500 dark:text-gray-400">データノイズを減らし、頻出局面に絞り込みます。</p>
+                        </div>
+                    </div>
+                     <div class="relative flex items-center gap-x-4">
+                        <label for="min-move-number" class="font-medium text-gray-900 dark:text-gray-100">開始手数を指定:</label>
+                        <input id="min-move-number" name="min-move-number" type="number" value="1" min="1" class="w-24 rounded-md border-gray-300 dark:bg-gray-700 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">手以降の局面を分析対象とします。</p>
+                    </div>
+                </div>
+
             </div>
 
             <div class="text-center my-6">
@@ -128,6 +147,8 @@
         const resultContainer = document.getElementById('result-container');
         const copyButton = document.getElementById('copy-button');
         const copyFeedback = document.getElementById('copy-feedback');
+        const excludeSingleCheckbox = document.getElementById('exclude-single');
+        const minMoveNumberInput = document.getElementById('min-move-number');
 
         let activeTab = 'file';
         let selectedFile = null;
@@ -270,13 +291,30 @@
                     showError("有効な棋譜を1件も処理できませんでした。");
                     return;
                 }
-                const sortedSfen = Array.from(sfenCounts.entries()).sort((a, b) => b[1] - a[1]);
+
+                // オプションを取得
+                const excludeSingle = excludeSingleCheckbox.checked;
+                const minMoveNumber = parseInt(minMoveNumberInput.value, 10) || 1;
+
+                // フィルタリング
+                let sfenArray = Array.from(sfenCounts.entries());
+                const filteredSfen = sfenArray.filter(([sfen, count]) => {
+                    const moveNumber = parseInt(sfen.split(' ').pop(), 10);
+                    const isMoveOk = moveNumber >= minMoveNumber;
+                    const isCountOk = !excludeSingle || count > 1;
+                    return isMoveOk && isCountOk;
+                });
+                
+                if (filteredSfen.length === 0) {
+                    showStatus("指定された条件に一致する局面は見つかりませんでした。");
+                    return;
+                }
+
+                // 出現回数でソート
+                const sortedSfen = filteredSfen.sort((a, b) => b[1] - a[1]);
                 
                 const csvHeader = "SFEN,出現回数\n";
-                const csvRows = sortedSfen.map(([sfen, count]) => {
-                    return `"${sfen}",${count}`;
-                });
-
+                const csvRows = sortedSfen.map(([sfen, count]) => `"${sfen}",${count}`);
                 const csvContent = csvHeader + csvRows.join("\n");
                 
                 const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
