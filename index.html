@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KIF to SFEN 変換ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', 'Inter', sans-serif;
+        }
+        .custom-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .custom-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">KIF to SFEN 変換ツール</h1>
+            <p class="mt-2 text-gray-600 dark:text-gray-400">KIF形式の棋譜ファイルをアップロードし、各手の局面をSFEN形式で表示します。</p>
+        </header>
+
+        <main class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 md:p-8">
+            <div class="mb-6">
+                <label for="kif-file" class="block mb-2 text-lg font-medium text-gray-700 dark:text-gray-300">1. KIF/KIFU ファイルを選択</label>
+                <div class="flex items-center justify-center w-full">
+                    <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-48 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-50 dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:hover:border-gray-500 dark:hover:bg-gray-600 transition">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-4-4V6a4 4 0 014-4h10a4 4 0 014 4v6a4 4 0 01-4 4H7z"></path><path  stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m3-3H7"></path></svg>
+                            <p class="mb-2 text-sm text-gray-500 dark:text-gray-400"><span class="font-semibold">クリックしてアップロード</span>またはドラッグ＆ドロップ</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">.kif または .kifu ファイル</p>
+                            <p id="file-name" class="mt-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400"></p>
+                        </div>
+                        <input id="dropzone-file" type="file" class="hidden" accept=".kif,.kifu">
+                    </label>
+                </div>
+            </div>
+
+            <div class="text-center mb-6">
+                 <button id="convert-button" class="custom-button w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none" disabled>
+                    変換実行
+                </button>
+            </div>
+
+            <div id="error-display" class="hidden my-4 p-4 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 rounded-lg">
+                <h3 class="font-bold">エラーが発生しました</h3>
+                <p id="error-message"></p>
+            </div>
+
+            <div id="result-container" class="hidden">
+                <div class="flex justify-between items-center mb-2">
+                     <h2 class="text-xl font-semibold text-gray-800 dark:text-white">変換結果 (SFEN)</h2>
+                    <button id="copy-button" class="custom-button bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                        全コピー
+                    </button>
+                </div>
+                <textarea id="sfen-output" rows="15" class="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm" readonly></textarea>
+                 <div id="copy-feedback" class="text-center mt-2 text-green-600 dark:text-green-400 font-medium opacity-0 transition-opacity duration-300">コピーしました！</div>
+            </div>
+        </main>
+        
+        <footer class="text-center mt-8 text-sm text-gray-500 dark:text-gray-400">
+            <p>&copy; 2025 KIF to SFEN Converter. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- 定数定義 ---
+        const PIECES = {
+            '歩': 'P', '香': 'L', '桂': 'N', '銀': 'S', '金': 'G', '角': 'B', '飛': 'R', '玉': 'K', '王': 'K',
+            'と': '+P', '杏': '+L', '圭': '+N', '全': '+S', '馬': '+B', '龍': '+R', '竜': '+R'
+        };
+        const KANJI_NUM = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+        const ZENKAKU_NUM = { '１': 1, '２': 2, '３': 3, '４': 4, '５': 5, '６': 6, '７': 7, '８': 8, '９': 9 };
+        const SFEN_HAND_ORDER = ['R', 'B', 'G', 'S', 'N', 'L', 'P'];
+
+        // --- DOM要素 ---
+        const fileInput = document.getElementById('dropzone-file');
+        const fileNameDisplay = document.getElementById('file-name');
+        const convertButton = document.getElementById('convert-button');
+        const sfenOutput = document.getElementById('sfen-output');
+        const errorDisplay = document.getElementById('error-display');
+        const errorMessage = document.getElementById('error-message');
+        const resultContainer = document.getElementById('result-container');
+        const copyButton = document.getElementById('copy-button');
+        const copyFeedback = document.getElementById('copy-feedback');
+
+        let selectedFile = null;
+
+        // --- ファイル選択イベント ---
+        fileInput.addEventListener('change', (e) => {
+            selectedFile = e.target.files[0];
+            if (selectedFile) {
+                fileNameDisplay.textContent = selectedFile.name;
+                convertButton.disabled = false;
+            } else {
+                fileNameDisplay.textContent = '';
+                convertButton.disabled = true;
+            }
+        });
+        
+        // --- ドラッグ＆ドロップ ---
+        const dropzone = fileInput.parentElement;
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('dark:border-indigo-500', 'border-indigo-500');
+        });
+        dropzone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dark:border-indigo-500', 'border-indigo-500');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dark:border-indigo-500', 'border-indigo-500');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+
+
+        // --- 変換ボタンイベント ---
+        convertButton.addEventListener('click', () => {
+            if (!selectedFile) return;
+
+            hideError();
+            resultContainer.classList.add('hidden');
+
+            // ファイルの拡張子に応じてエンコーディングを決定
+            const encoding = selectedFile.name.toLowerCase().endsWith('.kifu') ? 'UTF-8' : 'Shift_JIS';
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                try {
+                    const kifData = e.target.result;
+                    const sfenList = processKif(kifData);
+                    sfenOutput.value = sfenList.join('\n');
+                    resultContainer.classList.remove('hidden');
+                } catch (err) {
+                    showError(err.message);
+                    console.error(err);
+                }
+            };
+            
+            reader.onerror = () => {
+                showError(`ファイルの読み込みに失敗しました。エンコーディングが'${encoding}'でない可能性があります。`);
+            };
+
+            reader.readAsText(selectedFile, encoding);
+        });
+        
+        // --- コピーボタンイベント ---
+        copyButton.addEventListener('click', () => {
+            sfenOutput.select();
+            // navigator.clipboard.writeTextはiframe内で動作しないことがあるため、旧方式を使用
+            document.execCommand('copy');
+            sfenOutput.blur(); // 選択解除
+            copyFeedback.classList.remove('opacity-0');
+            setTimeout(() => {
+                copyFeedback.classList.add('opacity-0');
+            }, 2000);
+        });
+
+        // --- 将棋のロジック ---
+        class ShogiGame {
+            constructor() {
+                this.board = Array(9).fill(null).map(() => Array(9).fill(null));
+                this.hands = { sente: {}, gote: {} }; // 先手, 後手
+                this.turn = 'b'; // 'b' for black (sente), 'w' for white (gote)
+                this.moveNumber = 1;
+                this.lastMove = null;
+                this.initBoard();
+            }
+
+            initBoard() {
+                // 初期配置（平手）
+                const initialSetup = {
+                    '1': { 'L': 0, 'P': 2, 'l': 8 },
+                    '2': { 'N': 0, 'B': 1, 'P': 2, 'n': 8 },
+                    '3': { 'S': 0, 'P': 2, 's': 8 },
+                    '4': { 'G': 0, 'P': 2, 'g': 8 },
+                    '5': { 'K': 0, 'P': 2, 'k': 8 },
+                    '6': { 'G': 0, 'P': 2, 'g': 8 },
+                    '7': { 'S': 0, 'P': 2, 's': 8 },
+                    '8': { 'N': 0, 'R': 1, 'P': 2, 'n': 8 },
+                    '9': { 'L': 0, 'P': 2, 'l': 8 },
+                };
+
+                for (let x = 1; x <= 9; x++) {
+                    for (const piece in initialSetup[x.toString()]) {
+                        const y = initialSetup[x.toString()][piece];
+                        this.board[y][9 - x] = piece;
+                    }
+                }
+            }
+            
+            // SFEN 文字列を生成する
+            toSfen() {
+                // 1. 盤面
+                let boardStr = '';
+                for (let y = 0; y < 9; y++) {
+                    let emptyCount = 0;
+                    for (let x = 0; x < 9; x++) {
+                        const piece = this.board[y][x];
+                        if (piece) {
+                            if (emptyCount > 0) {
+                                boardStr += emptyCount;
+                                emptyCount = 0;
+                            }
+                            const owner = piece.toLowerCase() === piece ? 'w' : 'b';
+                            let sfenPiece = (PIECES[piece.replace('+', '')] || piece).toUpperCase();
+                            if (piece.startsWith('+')) {
+                                sfenPiece = '+' + sfenPiece;
+                            }
+                            boardStr += (owner === 'b' ? sfenPiece : sfenPiece.toLowerCase());
+                        } else {
+                            emptyCount++;
+                        }
+                    }
+                    if (emptyCount > 0) {
+                        boardStr += emptyCount;
+                    }
+                    if (y < 8) {
+                        boardStr += '/';
+                    }
+                }
+
+                // 2. 手番
+                const turnStr = this.turn;
+
+                // 3. 持ち駒
+                let handStr = '';
+                for (const owner of ['sente', 'gote']) {
+                    const hand = this.hands[owner];
+                    for (const piece of SFEN_HAND_ORDER) {
+                         if (hand[piece] > 0) {
+                            if (hand[piece] > 1) {
+                                handStr += hand[piece];
+                            }
+                            handStr += (owner === 'sente' ? piece : piece.toLowerCase());
+                        }
+                    }
+                }
+                if (handStr === '') {
+                    handStr = '-';
+                }
+
+                // 4. 手数
+                const moveNumStr = this.moveNumber;
+
+                return `${boardStr} ${turnStr} ${handStr} ${moveNumStr}`;
+            }
+
+            // KIF形式の指し手を適用
+            applyKifMove(move) {
+                const { piece, to, from, promote, isDrop } = this.parseKifMove(move);
+                
+                const toX = to.x;
+                const toY = to.y;
+
+                let pieceToMove = PIECES[piece] || piece;
+
+                if (isDrop) {
+                    if (this.board[toY-1][9-toX]) {
+                        throw new Error(`指し手 ${this.moveNumber}: ${toX}${toY} には既に駒があります (駒打ち)`);
+                    }
+                    this.board[toY-1][9-toX] = pieceToMove;
+                    // 持ち駒から減らす
+                    const hand = this.turn === 'b' ? this.hands.sente : this.hands.gote;
+                    if (!hand[pieceToMove] || hand[pieceToMove] <= 0) {
+                        throw new Error(`指し手 ${this.moveNumber}: ${pieceToMove} の持ち駒がありません。`);
+                    }
+                    hand[pieceToMove]--;
+                } else {
+                    const fromX = from.x;
+                    const fromY = from.y;
+                    
+                    const movingPiece = this.board[fromY-1][9-fromX];
+                    if (!movingPiece) {
+                        throw new Error(`指し手 ${this.moveNumber}: ${fromX}${fromY} に動かす駒がありません。`);
+                    }
+                    
+                    const capturedPiece = this.board[toY-1][9-toX];
+                    if (capturedPiece) {
+                        this.addPieceToHand(capturedPiece);
+                    }
+                    
+                    this.board[fromY-1][9-fromX] = null;
+                    this.board[toY-1][9-toX] = promote ? `+${movingPiece.replace('+', '')}` : movingPiece;
+                }
+                
+                this.lastMove = { to: { x: toX, y: toY } };
+                this.turn = (this.turn === 'b') ? 'w' : 'b';
+                this.moveNumber++;
+            }
+            
+            // 持ち駒に駒を追加
+            addPieceToHand(piece) {
+                let unpromotedPiece = (PIECES[piece.replace('+', '')] || piece).toUpperCase();
+                 // +S -> S, +P -> P
+                if (unpromotedPiece.startsWith('+')) {
+                    unpromotedPiece = unpromotedPiece.substring(1);
+                }
+                
+                const hand = this.turn === 'b' ? this.hands.sente : this.hands.gote;
+                if (!hand[unpromotedPiece]) {
+                    hand[unpromotedPiece] = 0;
+                }
+                hand[unpromotedPiece]++;
+            }
+
+            // KIFの指し手文字列を解析する
+            parseKifMove(kifMoveStr) {
+                // 例: "７六歩(77)" or "同　歩" or "５三角打"
+                const moveRegex = /(?:同\s*|[１-９][一二三四五六七八九])(.+?)(?:\(.*\)|成|打|$)/;
+                let parts = kifMoveStr.trim().split(/\s+/);
+                
+                let to, from;
+                let piece, promote = false, isDrop = false;
+
+                const coordStr = parts[0];
+                let pieceStr = parts[1];
+
+                if (pieceStr.endsWith('成')) {
+                    promote = true;
+                    pieceStr = pieceStr.slice(0, -1);
+                }
+                if (pieceStr.endsWith('打')) {
+                    isDrop = true;
+                    pieceStr = pieceStr.slice(0, -1);
+                }
+                piece = pieceStr;
+
+                if (coordStr.startsWith('同')) {
+                    if (!this.lastMove) throw new Error("初手で '同' は使えません。");
+                    to = { ...this.lastMove.to };
+                } else {
+                    to = { x: ZENKAKU_NUM[coordStr[0]], y: KANJI_NUM[coordStr[1]] };
+                }
+                
+                if (isDrop) {
+                    from = null;
+                } else {
+                    const fromMatch = kifMoveStr.match(/\((\d{2})\)/);
+                    if (fromMatch) {
+                        from = { x: parseInt(fromMatch[1][0]), y: parseInt(fromMatch[1][1]) };
+                    } else {
+                        // 移動元が省略されている場合、その駒を動かせる場所を探す
+                        from = this.findSource(piece, to, promote);
+                         if (!from) {
+                            throw new Error(`指し手 ${this.moveNumber}: ${piece} を ${to.x}${to.y} へ動かす駒が見つかりません。`);
+                        }
+                    }
+                }
+
+                return { piece, to, from, promote, isDrop };
+            }
+            
+            // 移動元の探索
+            findSource(pieceKanji, to, promote) {
+                const pieceType = PIECES[pieceKanji];
+                const turnOwner = this.turn === 'b' ? 'sente' : 'gote';
+                
+                for(let y = 0; y < 9; y++) {
+                    for(let x = 0; x < 9; x++) {
+                        const boardPiece = this.board[y][x];
+                        if(!boardPiece) continue;
+                        
+                        const pieceOwner = boardPiece.toLowerCase() === boardPiece ? 'gote' : 'sente';
+                        let boardPieceType = (PIECES[boardPiece.replace('+', '')] || boardPiece).toUpperCase();
+
+                        if (pieceOwner === turnOwner && boardPieceType === pieceType) {
+                            const from = {x: 9 - x, y: y + 1};
+                            // ここで本来は移動が合法かどうかをチェックすべきだが、簡易的に最初の候補を返す
+                            // TODO: 厳密な合法手判定を追加する
+                            // if (is_legal_move(from, to, boardPiece)) return from;
+                            return from; // 簡易実装
+                        }
+                    }
+                }
+                return null; //見つからない
+            }
+
+        }
+
+        // --- KIF処理のメイン関数 ---
+        function processKif(kifData) {
+            const game = new ShogiGame();
+            const sfenList = [];
+
+            // 初期局面のSFENを追加
+            sfenList.push(game.toSfen());
+
+            const lines = kifData.split(/\r\n|\n|\r/);
+            const moveRegex = /^\s*\d+\s+/;
+            
+            for (const line of lines) {
+                if (line.startsWith('*') || line.startsWith('手数----') || line.trim() === '' || line.includes('：')) {
+                    continue; // コメントやヘッダーをスキップ
+                }
+                
+                if (moveRegex.test(line)) {
+                    const moveStr = line.replace(moveRegex, '').trim();
+                     if (moveStr.includes('投了') || moveStr.includes('中断') || moveStr.includes('詰み')) {
+                        break;
+                    }
+                    game.applyKifMove(moveStr);
+                    sfenList.push(game.toSfen());
+                }
+            }
+
+            return sfenList;
+        }
+        
+        // --- UI補助関数 ---
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorDisplay.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorDisplay.classList.add('hidden');
+        }
+
+    </script>
+</body>
+</html>
