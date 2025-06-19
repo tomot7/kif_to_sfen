@@ -70,7 +70,7 @@
             <div id="content-batch" class="hidden">
                  <label for="directory-picker" class="block mb-2 text-lg font-medium text-gray-700 dark:text-gray-300">1. フォルダを選択 (KIFファイルを含む)</label>
                 <input type="file" id="directory-picker" webkitdirectory multiple class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">選択したフォルダ内のすべての.kif/.kifuファイルを処理し、各局面の出現回数と<strong>その局面からの先手勝率</strong>を集計したCSVファイルを生成します。</p>
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">選択したフォルダ内のすべての.kif/.kifuファイルを処理し、各局面の出現回数を集計したCSVファイルを生成します。</p>
             </div>
 
             <div class="text-center my-6">
@@ -224,19 +224,9 @@
             setTimeout(() => { copyFeedback.classList.add('opacity-0'); }, 2000);
         });
 
-        // --- KIF棋譜から勝者を判定する関数 ---
-        function parseKifForWinner(kifText) {
-            const lines = kifText.split(/\r\n|\n|\r/);
-            for (const line of lines) {
-                if (line.includes('先手の勝ち') || line.includes('勝者：▲')) return 'sente';
-                if (line.includes('後手の勝ち') || line.includes('勝者：△')) return 'gote';
-            }
-            return 'unknown';
-        }
-
         // --- 一括処理関数 ---
         function processBatch(files) {
-            const sfenData = new Map();
+            const sfenCounts = new Map();
             const kifFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.kif') || f.name.toLowerCase().endsWith('.kifu'));
             let processedCount = 0;
 
@@ -253,23 +243,10 @@
                 reader.onload = (e) => {
                     try {
                         const kifText = e.target.result;
-                        const winner = parseKifForWinner(kifText);
-                        const isSenteWin = winner === 'sente';
-                        
-                        // 勝敗が明記されている棋譜のみを勝率計算の対象とする
-                        const considerForWinRate = winner !== 'unknown';
-
                         const sfenList = processKif(kifText);
-
                         sfenList.forEach(sfen => {
-                            const data = sfenData.get(sfen) || { wins: 0, total: 0 };
-                            data.total++;
-                            if (considerForWinRate && isSenteWin) {
-                                data.wins++;
-                            }
-                            sfenData.set(sfen, data);
+                            sfenCounts.set(sfen, (sfenCounts.get(sfen) || 0) + 1);
                         });
-
                     } catch (e) {
                          console.warn(`ファイル ${file.name} の処理中にエラーが発生しました: ${e.message}`);
                     } finally {
@@ -289,16 +266,15 @@
 
             Promise.all(promises).then(() => {
                 hideStatus();
-                if (sfenData.size === 0) {
+                if (sfenCounts.size === 0) {
                     showError("有効な棋譜を1件も処理できませんでした。");
                     return;
                 }
-                const sortedSfen = Array.from(sfenData.entries()).sort((a, b) => b[1].total - a[1].total);
+                const sortedSfen = Array.from(sfenCounts.entries()).sort((a, b) => b[1] - a[1]);
                 
-                const csvHeader = "SFEN,出現回数,先手勝率(%)\n";
-                const csvRows = sortedSfen.map(([sfen, data]) => {
-                    const winRate = data.total > 0 ? (data.wins / data.total * 100).toFixed(2) : "0.00";
-                    return `"${sfen}",${data.total},${winRate}`;
+                const csvHeader = "SFEN,出現回数\n";
+                const csvRows = sortedSfen.map(([sfen, count]) => {
+                    return `"${sfen}",${count}`;
                 });
 
                 const csvContent = csvHeader + csvRows.join("\n");
@@ -307,7 +283,7 @@
                 const link = document.createElement("a");
                 const url = URL.createObjectURL(blob);
                 link.setAttribute("href", url);
-                link.setAttribute("download", "sfen_analysis.csv");
+                link.setAttribute("download", "sfen_counts.csv");
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
