@@ -199,7 +199,7 @@
                             const sfenList = processKif(e.target.result);
                             sfenOutput.value = sfenList.join('\n');
                             resultContainer.classList.remove('hidden');
-                        } catch (err) { showError(err.message); }
+                        } catch (err) { showError(err.message); console.error(err); }
                     };
                     reader.onerror = () => { showError(`ファイルの読み込みに失敗しました。`); };
                     reader.readAsText(selectedFile, encoding);
@@ -237,7 +237,7 @@
 
             showStatus(`処理中... (0 / ${kifFiles.length})`);
 
-            const promises = kifFiles.map(file => new Promise((resolve, reject) => {
+            const promises = kifFiles.map(file => new Promise((resolve) => {
                 const reader = new FileReader();
                 const encoding = file.name.toLowerCase().endsWith('.kifu') ? 'UTF-8' : 'Shift_JIS';
                 reader.onload = (e) => {
@@ -246,23 +246,29 @@
                         sfenList.forEach(sfen => {
                             sfenCounts.set(sfen, (sfenCounts.get(sfen) || 0) + 1);
                         });
+                    } catch (e) {
+                         console.warn(`ファイル ${file.name} の処理中にエラーが発生しました: ${e.message}`);
+                    } finally {
                         processedCount++;
                         showStatus(`処理中... (${processedCount} / ${kifFiles.length})`);
                         resolve();
-                    } catch (e) {
-                         console.warn(`ファイル ${file.name} の処理中にエラーが発生しました: ${e.message}`);
-                        resolve(); // エラーがあっても処理を続行
                     }
                 };
                 reader.onerror = () => {
                      console.warn(`ファイル ${file.name} の読み込みに失敗しました。`);
-                    resolve(); // エラーがあっても処理を続行
+                     processedCount++;
+                     showStatus(`処理中... (${processedCount} / ${kifFiles.length})`);
+                     resolve();
                 };
                 reader.readAsText(file, encoding);
             }));
 
             Promise.all(promises).then(() => {
                 hideStatus();
+                if (sfenCounts.size === 0) {
+                    showError("有効な棋譜を1件も処理できませんでした。");
+                    return;
+                }
                 const sortedSfen = Array.from(sfenCounts.entries()).sort((a, b) => b[1] - a[1]);
                 const csvContent = "SFEN,出現回数\n" + sortedSfen.map(([sfen, count]) => `"${sfen}",${count}`).join("\n");
                 
@@ -383,10 +389,10 @@
                 if (remainingStr.startsWith('同')) {
                     if (!this.lastMove) throw new Error("初手で '同' は使えません。");
                     to = { ...this.lastMove.to };
-                    piece = remainingStr.slice(1).trim().replace('　','');
+                    piece = remainingStr.slice(1).trim().replace(/　/g,'');
                 } else {
                     const coordStr = remainingStr.slice(0, 2);
-                    piece = remainingStr.slice(2).trim().replace('　','');
+                    piece = remainingStr.slice(2).trim().replace(/　/g,'');
                     if(!ZENKAKU_NUM[coordStr[0]] || !KANJI_NUM[coordStr[1]]) { throw new Error(`指し手 ${this.moveNumber}: 不正な座標です: ${coordStr}`); }
                     to = { x: ZENKAKU_NUM[coordStr[0]], y: KANJI_NUM[coordStr[1]] };
                 }
@@ -401,6 +407,7 @@
                 return { piece, to, from, promote, isDrop };
             }
             findSource(pieceKanji, to) {
+                if (!PIECES[pieceKanji]) throw new Error(`内部エラー: 未知の駒名「${pieceKanji}」がfindSourceに渡されました。`);
                 const sfenPieceType = PIECES[pieceKanji].replace('+', '');
                 for (let y = 0; y < 9; y++) {
                     for (let x = 0; x < 9; x++) {
@@ -419,18 +426,19 @@
         function processKif(kifData) {
             const game = new ShogiGame();
             const sfenList = [];
-            // TODO: 手合割に応じた初期化
             sfenList.push(game.toSfen());
             const lines = kifData.split(/\r\n|\n|\r/);
             const moveRegex = /^\s*\d+\s+/;
             for (const line of lines) {
-                if (line.startsWith('*') || line.startsWith('手数----') || line.trim() === '' || line.includes('：')) { continue; }
-                if (moveRegex.test(line)) {
-                    const moveStr = line.replace(moveRegex, '').trim();
-                     if (moveStr.includes('投了') || moveStr.includes('中断') || moveStr.includes('詰み') || moveStr.includes('千日手')) { break; }
-                    game.applyKifMove(moveStr);
-                    sfenList.push(game.toSfen());
+                if (!moveRegex.test(line)) {
+                    continue; // 指し手行でなければスキップ
                 }
+                const moveStr = line.replace(moveRegex, '').trim();
+                 if (moveStr.includes('投了') || moveStr.includes('中断') || moveStr.includes('詰み') || moveStr.includes('千日手')) { break; }
+                if (moveStr === '') continue;
+                
+                game.applyKifMove(moveStr);
+                sfenList.push(game.toSfen());
             }
             return sfenList;
         }
