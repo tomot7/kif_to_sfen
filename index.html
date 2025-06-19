@@ -377,9 +377,12 @@
                 hand[unpromotedPiece] = (hand[unpromotedPiece] || 0) + 1;
             }
             parseKifMove(kifMoveStr) {
-                const fullMoveStr = kifMoveStr.trim().split(/\s+/)[0];
+                // Remove time component like (00:00/00:00:00) first
+                const timeMatch = kifMoveStr.match(/\s+\(.+\/.+\)$/);
+                const movePart = timeMatch ? kifMoveStr.substring(0, timeMatch.index) : kifMoveStr;
+                let remainingStr = movePart.trim();
+
                 let to, from = null, piece, promote = false, isDrop = false;
-                let remainingStr = fullMoveStr;
 
                 const fromMatch = remainingStr.match(/\((\d{2})\)/);
                 if (fromMatch) { from = { x: parseInt(fromMatch[1][0]), y: parseInt(fromMatch[1][1]) }; remainingStr = remainingStr.replace(fromMatch[0], ''); }
@@ -397,6 +400,10 @@
                     to = { x: ZENKAKU_NUM[coordStr[0]], y: KANJI_NUM[coordStr[1]] };
                 }
                 
+                if (piece === '') {
+                    throw new Error(`指し手 ${this.moveNumber}: 駒名を特定できませんでした。棋譜記述: "${kifMoveStr}"`);
+                }
+
                 if (!from && !isDrop) {
                     from = this.findSource(piece, to);
                     if (!from) {
