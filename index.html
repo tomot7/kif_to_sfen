@@ -313,6 +313,16 @@
                 // 出現回数でソート
                 const sortedSfen = filteredSfen.sort((a, b) => b[1] - a[1]);
                 
+                // ファイル名を作成
+                let filename = 'sfen_counts';
+                if (minMoveNumber > 1) {
+                    filename += `_min-move-${minMoveNumber}`;
+                }
+                if (excludeSingle) {
+                    filename += `_exclude-single`;
+                }
+                filename += '.csv';
+
                 const csvHeader = "SFEN,出現回数\n";
                 const csvRows = sortedSfen.map(([sfen, count]) => `"${sfen}",${count}`);
                 const csvContent = csvHeader + csvRows.join("\n");
@@ -321,12 +331,12 @@
                 const link = document.createElement("a");
                 const url = URL.createObjectURL(blob);
                 link.setAttribute("href", url);
-                link.setAttribute("download", "sfen_counts.csv");
+                link.setAttribute("download", filename);
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
-                showStatus(`${kifFiles.length} ファイルを処理し、CSVをダウンロードしました。`);
+                showStatus(`${kifFiles.length} ファイルを処理し、「${filename}」をダウンロードしました。`);
             });
         }
         
